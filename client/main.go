@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,9 +13,12 @@ import (
 type rpcMsg map[string]any
 
 func writeLine(w *bufio.Writer, v any) error {
-	/* RPC メッセージを JSON 形式でシリアライズして書き込む関数 */
-	b, _ := json.Marshal(v)
-	_, err := w.WriteString(string(b) + "\n")
+	// RPC メッセージを 1 行 JSON で送信する。
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = w.WriteString(string(b) + "\n")
 	if err != nil {
 		return err
 	}
@@ -22,7 +26,7 @@ func writeLine(w *bufio.Writer, v any) error {
 }
 
 func readLine(r *bufio.Reader) (rpcMsg, error) {
-	/* RPC メッセージを JSON 形式で読み込む関数 */
+	// 1 行 JSON の RPC レスポンスを読み込む。
 	line, err := r.ReadBytes('\n')
 	if err != nil {
 		return nil, err
@@ -38,7 +42,11 @@ func main() {
 	// ユーザからピッチの入力を受け取る
 	fmt.Println("SlideAgent (MVP) — paste your pitch in one paragraph, then Enter:")
 	in := bufio.NewReader(os.Stdin)
-	userText, _ := in.ReadString('\n')
+	userText, err := in.ReadString('\n')
+	if err != nil {
+		fmt.Println("stdin read error:", err)
+		return
+	}
 
 	// Gemini API 呼び出し
 	slidesJSON, err := callGeminiJSON(userText)
@@ -47,19 +55,32 @@ func main() {
 		return
 	}
 
-	// MCPサーバーの起動
-	cmd := exec.Command("go", "run", ".", "../mcp-server")
-	cmd = exec.Command("go", "run", "./mcp-server")
+	// MCP サーバを子プロセスで起動する。
+	cmd := exec.Command("go", "run", ".")
+	cmd.Dir = "../mcp-server"
+	cmd.Env = os.Environ()
 
-	stdin, _ := cmd.StdinPipe()
-	stdout, _ := cmd.StdoutPipe()
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		fmt.Println("failed to connect mcp stdin:", err)
+		return
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		fmt.Println("failed to connect mcp stdout:", err)
+		return
+	}
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
 		fmt.Println("failed to start mcp-server:", err)
 		return
 	}
-	defer cmd.Process.Kill()
+	defer func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+	}()
 
 	w := bufio.NewWriter(stdin)
 	r := bufio.NewReader(stdout)
@@ -79,11 +100,25 @@ func main() {
 		},
 	}
 
-	_ = writeLine(w, initReq)
-	_, _ = readLine(r)
+	if err := writeLine(w, initReq); err != nil {
+		fmt.Println("initialize write error:", err)
+		return
+	}
+	initResp, err := readLine(r)
+	if err != nil {
+		fmt.Println("initialize read error:", err)
+		return
+	}
+	if _, hasErr := initResp["error"]; hasErr {
+		fmt.Println("initialize returned error:", initResp["error"])
+		return
+	}
 
 	// 初期化完了通知
-	_ = writeLine(w, rpcMsg{"jsonrpc": "2.0", "method": "notifications/initialized"})
+	if err := writeLine(w, rpcMsg{"jsonrpc": "2.0", "method": "notifications/initialized"}); err != nil {
+		fmt.Println("initialized notification write error:", err)
+		return
+	}
 
 	outName := fmt.Sprintf("pitch_%d.pptx", time.Now().Unix())
 	slidesJSON["outputName"] = outName
@@ -99,13 +134,24 @@ func main() {
 			},
 		},
 	}
-	_ = writeLine(w, callReq)
+	if err := writeLine(w, callReq); err != nil {
+		fmt.Println("tools/call write error:", err)
+		return
+	}
 	resp, err := readLine(r)
 	if err != nil {
 		fmt.Println("tools/call error:", err)
 		return
 	}
+	if _, hasErr := resp["error"]; hasErr {
+		fmt.Println("tools/call returned error:", resp["error"])
+		return
+	}
+	if _, ok := resp["result"]; !ok {
+		fmt.Println("tools/call invalid response:", errors.New("missing result"))
+		return
+	}
 
 	fmt.Println("MCP response:", resp)
-	fmt.Println("Check ./outputs for the generated .pptx")
+	fmt.Println("Check ./output for the generated .pptx")
 }

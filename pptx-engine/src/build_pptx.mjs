@@ -21,7 +21,7 @@ function addBullets(slide, title, bullets) {
 
 // 入力データの読み込みと出力ディレクトリの準備
 const input = JSON.parse(readStdin());
-const outDir = path.resolve(process.cwd(), "..", "outputs");
+const outDir = path.resolve(process.cwd(), "..", "output");
 ensureDir(outDir);
 
 const pptx = new PptxGenJS();

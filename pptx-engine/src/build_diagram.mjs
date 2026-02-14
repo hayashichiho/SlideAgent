@@ -37,7 +37,7 @@ steps.forEach((t, i) => {
 });
 
 svg.push(`</svg>`);
-const outDir = path.resolve(process.cwd(), "..", "outputs");
+const outDir = path.resolve(process.cwd(), "..", "output");
 ensureDir(outDir);
 const outPath = path.join(outDir, input.outputName || `diagram_${Date.now()}.svg`);
 // 生成したSVGを保存

@@ -19,14 +19,13 @@ server: check-go
 	cd mcp-server && GOCACHE=$(GOCACHE_DIR) $(GO) run .
 
 client: check-go
-	cd client && GOCACHE=$(GOCACHE_DIR) $(GO) run .
+	set -a; [ -f .env ] && . ./.env; set +a; cd client && GOCACHE=$(GOCACHE_DIR) $(GO) run .
 
-dev: server
+dev: client
 
 demo:
-	@echo "1) Terminal A: make server"
-	@echo "2) Terminal B: make client"
-	@echo "3) Paste a pitch description -> get outputs/*.pptx"
+	@echo "1) make client"
+	@echo "2) Paste a pitch description -> get output/*.pptx"
 
 clean:
-	rm -rf outputs/*
+	rm -rf output/*

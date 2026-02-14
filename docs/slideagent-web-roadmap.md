@@ -54,7 +54,7 @@ SlideAgent/
     docker-compose.yml
     k8s/
   scripts/
-  output/ or outputs/        # ローカル開発の生成物（一つに統一）
+  output/                    # ローカル開発の生成物
 ```
 
 ## 5. サービス責務分離
@@ -89,7 +89,7 @@ SlideAgent/
 
 ### タスク
 - `make_pptx` 実装を完成（必須引数検証、エラーメッセージ整備）。
-- `output` と `outputs` のディレクトリ名を統一。
+- 出力ディレクトリを `output/` に統一。
 - `client` の MCP 起動方式を一本化（内包起動 or 外部起動のどちらか）。
 - Geminiレスポンスの堅牢化（JSON以外返却時の再試行/補正）。
 - 最低限の構造化ログ（request_id/job_id相当）導入。

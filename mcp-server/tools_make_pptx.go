@@ -4,14 +4,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os/exec"
+	"strings"
 )
 
 func toolMakePptxDef() map[string]any {
 	/* make_pptx ツールの定義関数 */
 	return map[string]any{
 		"name":        "make_pptx",
-		"description": "Build a .pptx deck from slides_json using the local pptx-engine (PptxGenJS). Output is saved under ./outputs.",
+		"description": "Build a .pptx deck from slides_json using the local pptx-engine (PptxGenJS). Output is saved under ./output.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -23,16 +25,18 @@ func toolMakePptxDef() map[string]any {
 }
 
 func toolMakePptxCall(args map[string]any) (map[string]any, error) {
-	/* pptx-engine を呼び出して .pptx を生成する関数 */
 	// 引数から slides_json を取得して JSON にシリアライズ
 	raw, ok := args["slides_json"]
 	if !ok {
 		return nil, errors.New("missing slides_json")
 	}
-	inBytes, _ := json.Marshal(raw)
+	inBytes, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal slides_json: %w", err)
+	}
 
 	// Node.js の pptx-engine スクリプトを呼び出す
-	cmd := exec.Command("node", "pptx-engine/src/build_pptx.mjs")
+	cmd := exec.Command("node", "../pptx-engine/src/build_pptx.mjs")
 	cmd.Stdin = bytes.NewReader(inBytes)
 
 	// コマンドの標準出力と標準エラーをキャプチャ
@@ -42,12 +46,19 @@ func toolMakePptxCall(args map[string]any) (map[string]any, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, errors.New(stderr.String())
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return nil, fmt.Errorf("node build_pptx failed: %s", msg)
 	}
 
 	var out map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid build_pptx output: %w", err)
+	}
+	if _, ok := out["pptx_path"]; !ok {
+		return nil, errors.New("build_pptx output missing pptx_path")
 	}
 
 	// MCP tool result format: content[] を返すのが一般的

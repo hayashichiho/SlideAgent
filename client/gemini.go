@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -20,8 +22,22 @@ type geminiResp struct {
 	} `json:"candidates"`
 }
 
+func normalizeLLMJSON(raw string) string {
+	s := strings.TrimSpace(raw)
+	if strings.HasPrefix(s, "```") {
+		lines := strings.Split(s, "\n")
+		if len(lines) >= 3 {
+			lines = lines[1:]
+			if strings.TrimSpace(lines[len(lines)-1]) == "```" {
+				lines = lines[:len(lines)-1]
+			}
+			s = strings.Join(lines, "\n")
+		}
+	}
+	return strings.TrimSpace(s)
+}
+
 func callGeminiJSON(userText string) (map[string]any, error) {
-	/* Gemini API を呼び出して、ユーザの入力に基づいてスライドの内容を JSON 形式で生成する関数 */
 	// GEMINI_API_KEY 環境変数から API キーを取得
 	key := os.Getenv("GEMINI_API_KEY")
 	if key == "" {
@@ -47,8 +63,14 @@ func callGeminiJSON(userText string) (map[string]any, error) {
 	}
 
 	// HTTP POST リクエストの送信
-	b, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", url, bytes.NewReader(b))
+	b, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest("POST", url, bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-goog-api-key", key)
 
@@ -58,6 +80,10 @@ func callGeminiJSON(userText string) (map[string]any, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("gemini api error: status=%d body=%s", resp.StatusCode, string(body))
+	}
 
 	// レスポンスの処理
 	var gr geminiResp
@@ -70,6 +96,7 @@ func callGeminiJSON(userText string) (map[string]any, error) {
 
 	// レスポンスから JSON を抽出して返す
 	raw := gr.Candidates[0].Content.Parts[0].Text
+	raw = normalizeLLMJSON(raw)
 	var out map[string]any
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON: %w\nraw:\n%s", err, raw)
