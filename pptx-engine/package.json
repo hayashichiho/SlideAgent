@@ -1,0 +1,8 @@
+{
+  "name": "pptx-engine",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "pptxgenjs": "*"
+  }
+}
