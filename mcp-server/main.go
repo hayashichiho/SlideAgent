@@ -74,6 +74,10 @@ func main() {
 					toolMakePptxDef(),
 					toolMakeDiagramDef(),
 					toolRenderPngDef(), // 未実装でも定義だけ出してOK
+					toolPptxExtractStyleDef(),
+					toolProfileBuildDef(),
+					toolProfileCheckDef(),
+					toolGenerateCoachingTipsDef(),
 				},
 			})
 
@@ -110,6 +114,38 @@ func main() {
 
 			case "render_png":
 				replyErr(req.ID, -32000, "render_png not implemented yet")
+
+			case "pptx_extract_style":
+				out, err := toolPptxExtractStyleCall(p.Args)
+				if err != nil {
+					replyErr(req.ID, -32000, err.Error())
+					continue
+				}
+				reply(req.ID, out)
+
+			case "profile_build":
+				out, err := toolProfileBuildCall(p.Args)
+				if err != nil {
+					replyErr(req.ID, -32000, err.Error())
+					continue
+				}
+				reply(req.ID, out)
+
+			case "profile_check":
+				out, err := toolProfileCheckCall(p.Args)
+				if err != nil {
+					replyErr(req.ID, -32000, err.Error())
+					continue
+				}
+				reply(req.ID, out)
+
+			case "generate_coaching_tips":
+				out, err := toolGenerateCoachingTipsCall(p.Args)
+				if err != nil {
+					replyErr(req.ID, -32000, err.Error())
+					continue
+				}
+				reply(req.ID, out)
 
 			default:
 				replyErr(req.ID, -32601, "method not found: unknown tool")

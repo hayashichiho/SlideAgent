@@ -1,0 +1,15 @@
+SlideAgent Template Rules (v1)
+- Top title bar + bold title
+- Keep consistent spacing and alignment across slides
+- Structure: bold subheading -> body text
+- Purpose highlight in red
+- Issues highlighted with blue outline box
+- Visual flow: eye moves top-to-bottom
+- Font sizes: caption 18pt, body 22pt, subheading 24pt
+- Fonts: Japanese Meiryo UI, Latin Segoe UI
+- First subheading/body positions are consistent across slides
+- Bottom/right alignment consistent across slides when possible
+- Body text <= 2 lines
+- Caption below images; caption above tables
+- Put slide number at top-right in the title bar
+- Avoid text-only slides; include figures/tables
