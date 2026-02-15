@@ -14,6 +14,8 @@ type Job struct {
 	PitchText    string `json:"pitchText"`
 	ArtifactPath string `json:"artifactPath,omitempty"`
 	ErrorMessage string `json:"errorMessage,omitempty"`
+	Attempts     int    `json:"attempts"`
+	MaxAttempts  int    `json:"maxAttempts"`
 	CreatedAt    string `json:"createdAt"`
 	UpdatedAt    string `json:"updatedAt"`
 }

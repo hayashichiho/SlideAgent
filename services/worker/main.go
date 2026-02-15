@@ -144,7 +144,15 @@ func processOne() (bool, error) {
 
 	pptxPath, err := runClient(job.PitchText)
 	if err != nil {
-		job.Status = jobmodel.StatusFailed
+		job.Attempts++
+		if job.MaxAttempts <= 0 {
+			job.MaxAttempts = 2
+		}
+		if job.Attempts < job.MaxAttempts {
+			job.Status = jobmodel.StatusQueued
+		} else {
+			job.Status = jobmodel.StatusFailed
+		}
 		job.ErrorMessage = err.Error()
 		job.UpdatedAt = nowRFC3339()
 		_ = saveJob(job)

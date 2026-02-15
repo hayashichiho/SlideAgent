@@ -17,7 +17,14 @@ import (
 
 type createJobRequest struct {
 	// createJobRequest はジョブ作成APIの入力。
-	PitchText string `json:"pitchText"`
+	PitchText   string `json:"pitchText"`
+	MaxAttempts *int   `json:"maxAttempts,omitempty"`
+}
+
+type Artifact struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+	Path string `json:"path"`
 }
 
 func jobsDir() string {
@@ -96,6 +103,30 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+func artifactTypeFromPath(p string) string {
+	switch strings.ToLower(filepath.Ext(p)) {
+	case ".pptx":
+		return "pptx"
+	case ".png":
+		return "png"
+	case ".pdf":
+		return "pdf"
+	case ".json":
+		return "json"
+	default:
+		return "file"
+	}
+}
+
+func defaultMaxAttempts() int {
+	if v := strings.TrimSpace(os.Getenv("JOB_MAX_ATTEMPTS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 2
+}
+
 func createJobHandler(w http.ResponseWriter, r *http.Request) {
 	/* ジョブ作成APIのハンドラ関数 */
 	if r.Method != http.MethodPost && r.Method != http.MethodGet {
@@ -138,12 +169,22 @@ func createJobHandler(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	id := fmt.Sprintf("job_%d", time.Now().UnixNano())
+	maxAttempts := defaultMaxAttempts()
+	if req.MaxAttempts != nil {
+		if *req.MaxAttempts <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "maxAttempts must be > 0"})
+			return
+		}
+		maxAttempts = *req.MaxAttempts
+	}
 	job := jobmodel.Job{
-		ID:        id,
-		Status:    jobmodel.StatusQueued,
-		PitchText: strings.TrimSpace(req.PitchText),
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:          id,
+		Status:      jobmodel.StatusQueued,
+		PitchText:   strings.TrimSpace(req.PitchText),
+		Attempts:    0,
+		MaxAttempts: maxAttempts,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 	if err := saveJob(job); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
@@ -187,12 +228,36 @@ func getJobHandler(w http.ResponseWriter, r *http.Request) {
 		job.Status = jobmodel.StatusQueued
 		job.ArtifactPath = ""
 		job.ErrorMessage = ""
+		job.Attempts = 0
+		if job.MaxAttempts <= 0 {
+			job.MaxAttempts = defaultMaxAttempts()
+		}
 		job.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 		if err := saveJob(job); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusOK, job)
+		return
+	}
+
+	if len(parts) == 2 && parts[1] == "artifacts" {
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+			return
+		}
+		artifacts := []Artifact{}
+		if strings.TrimSpace(job.ArtifactPath) != "" {
+			artifacts = append(artifacts, Artifact{
+				ID:   fmt.Sprintf("%s_art_1", job.ID),
+				Type: artifactTypeFromPath(job.ArtifactPath),
+				Path: job.ArtifactPath,
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"jobId":     job.ID,
+			"artifacts": artifacts,
+		})
 		return
 	}
 
