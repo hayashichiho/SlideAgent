@@ -24,6 +24,7 @@ client/client
 mcp-server/mcp-server
 services/api/api
 services/worker/worker
+services/frontend/frontend
 
 # --- Project build outputs ---
 output/

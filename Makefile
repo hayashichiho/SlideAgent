@@ -1,4 +1,4 @@
-.PHONY: setup dev server client api worker demo clean check-go
+.PHONY: setup dev server client api worker frontend demo clean check-go
 
 GO ?= go
 GOCACHE_DIR ?= $(CURDIR)/.cache/go-build
@@ -16,6 +16,7 @@ setup: check-go
 	cd client && GOCACHE=$(GOCACHE_DIR) $(GO) mod tidy
 	cd services/api && GOCACHE=$(GOCACHE_DIR) $(GO) mod tidy
 	cd services/worker && GOCACHE=$(GOCACHE_DIR) $(GO) mod tidy
+	cd services/frontend && GOCACHE=$(GOCACHE_DIR) $(GO) mod tidy
 
 server: check-go
 	cd mcp-server && GOCACHE=$(GOCACHE_DIR) $(GO) run .
@@ -29,13 +30,17 @@ api: check-go
 worker: check-go
 	set -a; [ -f .env ] && . ./.env; set +a; cd services/worker && GOCACHE=$(GOCACHE_DIR) $(GO) run .
 
+frontend: check-go
+	set -a; [ -f .env ] && . ./.env; set +a; cd services/frontend && GOCACHE=$(GOCACHE_DIR) $(GO) run .
+
 dev: client
 
 demo:
 	@echo "CLI: make client"
 	@echo "Web phase(min): Terminal A = make api"
 	@echo "                Terminal B = make worker"
-	@echo "                POST /jobs then GET /jobs/:id"
+	@echo "                Terminal C = make frontend"
+	@echo "                open http://127.0.0.1:3000"
 
 clean:
 	rm -rf output/*
