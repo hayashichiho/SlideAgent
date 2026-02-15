@@ -68,7 +68,7 @@ make profile
 
 3. ユーザーPPTXをチェック
 ```bash
-make check DECK=output/your_deck.pptx
+make check DECK=decks/review/your_deck.pptx
 ```
 
 4. Geminiで改善コツを生成
@@ -82,6 +82,12 @@ GEMINI_API_KEY=... make coach
 - `outputs/deck_metrics.json`
 - `outputs/violations.json`
 - `outputs/tips.json`
+
+## 添削用PPTXの置き場
+
+- 入力用フォルダ: `decks/review/`
+- 例: `decks/review/my_slides.pptx`
+- 実行: `make check DECK=decks/review/my_slides.pptx`
 
 ## Gemini でコツ生成（MCP経由）
 

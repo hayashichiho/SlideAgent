@@ -71,9 +71,6 @@ func main() {
 		case "tools/list":
 			reply(req.ID, map[string]any{
 				"tools": []any{
-					toolMakePptxDef(),
-					toolMakeDiagramDef(),
-					toolRenderPngDef(), // 未実装でも定義だけ出してOK
 					toolPptxExtractStyleDef(),
 					toolProfileBuildDef(),
 					toolProfileCheckDef(),
@@ -96,25 +93,6 @@ func main() {
 			}
 
 			switch p.Name {
-			case "make_pptx":
-				out, err := toolMakePptxCall(p.Args)
-				if err != nil {
-					replyErr(req.ID, -32000, err.Error())
-					continue
-				}
-				reply(req.ID, out)
-
-			case "make_diagram":
-				out, err := toolMakeDiagramCall(p.Args)
-				if err != nil {
-					replyErr(req.ID, -32000, err.Error())
-					continue
-				}
-				reply(req.ID, out)
-
-			case "render_png":
-				replyErr(req.ID, -32000, "render_png not implemented yet")
-
 			case "pptx_extract_style":
 				out, err := toolPptxExtractStyleCall(p.Args)
 				if err != nil {

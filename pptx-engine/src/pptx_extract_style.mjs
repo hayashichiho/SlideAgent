@@ -198,6 +198,10 @@ if (!pptxPath) {
   console.error("missing pptx_path / --pptx");
   process.exit(1);
 }
+if (!fs.existsSync(pptxPath)) {
+  console.error(`pptx not found: ${pptxPath}`);
+  process.exit(1);
+}
 
 const metrics = extractMetrics(pptxPath);
 const outPath = input.output_path || parseArg("--out") || path.resolve(process.cwd(), "outputs", `metrics_${Date.now()}.json`);

@@ -20,16 +20,13 @@ bin/
 *.test
 *.out
 coverage.out
-client/client
 mcp-server/mcp-server
-services/api/api
-services/worker/worker
-services/frontend/frontend
 
 # --- Project build outputs ---
-output/
 outputs/
 .cache/
+decks/review/*.pptx
+!decks/review/.gitkeep
 
 # --- Editor/OS ---
 .DS_Store
