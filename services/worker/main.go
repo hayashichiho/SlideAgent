@@ -10,17 +10,9 @@ import (
 	"sort"
 	"strings"
 	"time"
-)
 
-type Job struct {
-	ID           string `json:"id"`
-	Status       string `json:"status"`
-	PitchText    string `json:"pitchText"`
-	ArtifactPath string `json:"artifactPath,omitempty"`
-	ErrorMessage string `json:"errorMessage,omitempty"`
-	CreatedAt    string `json:"createdAt"`
-	UpdatedAt    string `json:"updatedAt"`
-}
+	jobmodel "slideagent/libs/jobmodel-go"
+)
 
 type clientResult struct {
 	Status   string `json:"status"`
@@ -28,6 +20,7 @@ type clientResult struct {
 }
 
 func jobsDir() string {
+	/* JOBS_DIR 環境変数が設定されていればそれを返し、未設定なら既定のパスを返す関数 */
 	if v := strings.TrimSpace(os.Getenv("JOBS_DIR")); v != "" {
 		return v
 	}
@@ -35,11 +28,13 @@ func jobsDir() string {
 }
 
 func ensureJobsDir() error {
+	/* ジョブ保存用ディレクトリが存在しない場合は作成する関数 */
 	return os.MkdirAll(jobsDir(), 0o755)
 }
 
-func loadJobFromPath(p string) (Job, error) {
-	var job Job
+func loadJobFromPath(p string) (jobmodel.Job, error) {
+	/* ジョブファイルのパスからJSONを読み込んでJob構造体に変換して返す関数 */
+	var job jobmodel.Job
 	b, err := os.ReadFile(p)
 	if err != nil {
 		return job, err
@@ -50,7 +45,8 @@ func loadJobFromPath(p string) (Job, error) {
 	return job, nil
 }
 
-func saveJob(job Job) error {
+func saveJob(job jobmodel.Job) error {
+	/* Job構造体をJSONファイルとして保存する関数 */
 	b, err := json.MarshalIndent(job, "", "  ")
 	if err != nil {
 		return err
@@ -58,10 +54,11 @@ func saveJob(job Job) error {
 	return os.WriteFile(filepath.Join(jobsDir(), job.ID+".json"), b, 0o644)
 }
 
-func findNextQueuedJob() (Job, error) {
+func findNextQueuedJob() (jobmodel.Job, error) {
+	/* ジョブディレクトリから queued 状態のジョブを探して返す関数 */
 	files, err := filepath.Glob(filepath.Join(jobsDir(), "job_*.json"))
 	if err != nil {
-		return Job{}, err
+		return jobmodel.Job{}, err
 	}
 	sort.Strings(files)
 	for _, p := range files {
@@ -69,11 +66,11 @@ func findNextQueuedJob() (Job, error) {
 		if err != nil {
 			continue
 		}
-		if job.Status == "queued" {
+		if job.Status == jobmodel.StatusQueued {
 			return job, nil
 		}
 	}
-	return Job{}, os.ErrNotExist
+	return jobmodel.Job{}, os.ErrNotExist
 }
 
 func nowRFC3339() string {
@@ -130,6 +127,7 @@ func runClient(pitch string) (string, error) {
 }
 
 func processOne() (bool, error) {
+	/* ジョブを1件処理する関数 */
 	job, err := findNextQueuedJob()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -138,7 +136,7 @@ func processOne() (bool, error) {
 		return false, err
 	}
 
-	job.Status = "running"
+	job.Status = jobmodel.StatusRunning
 	job.UpdatedAt = nowRFC3339()
 	if err := saveJob(job); err != nil {
 		return true, err
@@ -146,14 +144,14 @@ func processOne() (bool, error) {
 
 	pptxPath, err := runClient(job.PitchText)
 	if err != nil {
-		job.Status = "failed"
+		job.Status = jobmodel.StatusFailed
 		job.ErrorMessage = err.Error()
 		job.UpdatedAt = nowRFC3339()
 		_ = saveJob(job)
 		return true, err
 	}
 
-	job.Status = "succeeded"
+	job.Status = jobmodel.StatusSucceeded
 	job.ArtifactPath = pptxPath
 	job.ErrorMessage = ""
 	job.UpdatedAt = nowRFC3339()
@@ -168,6 +166,7 @@ func main() {
 		panic(err)
 	}
 
+	// ジョブが見つからない場合は一定時間待ってから再度探す
 	interval := 3 * time.Second
 	if v := strings.TrimSpace(os.Getenv("WORKER_POLL_SECONDS")); v != "" {
 		if sec, err := time.ParseDuration(v + "s"); err == nil {
@@ -175,6 +174,7 @@ func main() {
 		}
 	}
 
+	// ワーカー開始
 	fmt.Println("worker started; jobsDir=", jobsDir())
 	for {
 		processed, err := processOne()

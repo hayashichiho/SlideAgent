@@ -7,20 +7,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
-)
 
-type Job struct {
-	// Job はジョブ状態を表す永続化データ。
-	ID           string `json:"id"`
-	Status       string `json:"status"`
-	PitchText    string `json:"pitchText"`
-	ArtifactPath string `json:"artifactPath,omitempty"`
-	ErrorMessage string `json:"errorMessage,omitempty"`
-	CreatedAt    string `json:"createdAt"`
-	UpdatedAt    string `json:"updatedAt"`
-}
+	jobmodel "slideagent/libs/jobmodel-go"
+)
 
 type createJobRequest struct {
 	// createJobRequest はジョブ作成APIの入力。
@@ -45,7 +38,7 @@ func jobPath(id string) string {
 	return filepath.Join(jobsDir(), id+".json")
 }
 
-func saveJob(job Job) error {
+func saveJob(job jobmodel.Job) error {
 	/* Job を JSON ファイルとして保存する関数 */
 	b, err := json.MarshalIndent(job, "", "  ")
 	if err != nil {
@@ -54,9 +47,9 @@ func saveJob(job Job) error {
 	return os.WriteFile(jobPath(job.ID), b, 0o644)
 }
 
-func loadJob(id string) (Job, error) {
+func loadJob(id string) (jobmodel.Job, error) {
 	/* ジョブIDからJSONファイルを読み込んでJob構造体に変換して返す関数 */
-	var job Job
+	var job jobmodel.Job
 	b, err := os.ReadFile(jobPath(id))
 	if err != nil {
 		return job, err
@@ -65,6 +58,35 @@ func loadJob(id string) (Job, error) {
 		return job, err
 	}
 	return job, nil
+}
+
+func listJobs(status string, limit int) ([]jobmodel.Job, error) {
+	/* 保存済みジョブを一覧取得する関数（新しい順、必要なら絞り込み） */
+	files, err := filepath.Glob(filepath.Join(jobsDir(), "job_*.json"))
+	if err != nil {
+		return nil, err
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(files)))
+
+	jobs := make([]jobmodel.Job, 0, len(files))
+	for _, p := range files {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		var job jobmodel.Job
+		if err := json.Unmarshal(b, &job); err != nil {
+			continue
+		}
+		if status != "" && job.Status != status {
+			continue
+		}
+		jobs = append(jobs, job)
+		if limit > 0 && len(jobs) >= limit {
+			break
+		}
+	}
+	return jobs, nil
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -76,10 +98,32 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func createJobHandler(w http.ResponseWriter, r *http.Request) {
 	/* ジョブ作成APIのハンドラ関数 */
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 		return
 	}
+
+	if r.Method == http.MethodGet {
+		status := strings.TrimSpace(r.URL.Query().Get("status"))
+		limit := 0
+		if limitRaw := strings.TrimSpace(r.URL.Query().Get("limit")); limitRaw != "" {
+			n, err := strconv.Atoi(limitRaw)
+			if err != nil || n <= 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "limit must be a positive integer"})
+				return
+			}
+			limit = n
+		}
+
+		jobs, err := listJobs(status, limit)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
+		return
+	}
+
 	defer r.Body.Close()
 
 	var req createJobRequest
@@ -94,9 +138,9 @@ func createJobHandler(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	id := fmt.Sprintf("job_%d", time.Now().UnixNano())
-	job := Job{
+	job := jobmodel.Job{
 		ID:        id,
-		Status:    "queued",
+		Status:    jobmodel.StatusQueued,
 		PitchText: strings.TrimSpace(req.PitchText),
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -110,18 +154,21 @@ func createJobHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getJobHandler(w http.ResponseWriter, r *http.Request) {
-	/* ジョブ取得APIのハンドラ関数 */
-	if r.Method != http.MethodGet {
+	/* ジョブ取得・リトライAPIのハンドラ関数 */
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 		return
 	}
 
-	id := strings.TrimPrefix(r.URL.Path, "/jobs/")
-	if id == "" || strings.Contains(id, "/") {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid job id"})
+	path := strings.TrimPrefix(r.URL.Path, "/jobs/")
+	path = strings.Trim(path, "/")
+	if path == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid path"})
 		return
 	}
 
+	parts := strings.Split(path, "/")
+	id := parts[0]
 	job, err := loadJob(id)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -132,6 +179,31 @@ func getJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(parts) == 2 && parts[1] == "retry" {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+			return
+		}
+		job.Status = jobmodel.StatusQueued
+		job.ArtifactPath = ""
+		job.ErrorMessage = ""
+		job.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		if err := saveJob(job); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, job)
+		return
+	}
+
+	if len(parts) > 1 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid path"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+		return
+	}
 	writeJSON(w, http.StatusOK, job)
 }
 

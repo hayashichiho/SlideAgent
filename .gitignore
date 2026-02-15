@@ -20,6 +20,10 @@ bin/
 *.test
 *.out
 coverage.out
+client/client
+mcp-server/mcp-server
+services/api/api
+services/worker/worker
 
 # --- Project build outputs ---
 output/
